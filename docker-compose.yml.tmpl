@@ -1,0 +1,57 @@
+version: '3.7'
+
+services:
+  {{env['DOCKER_STACK']}}:
+    image: minio/minio:RELEASE.2020-03-19T21-49-00Z
+    {% if env['PERSISTENCE_DRIVER']|length -%}
+    volumes:
+      - {{env['DOCKER_SERVICE']}}-data:/export
+    {%+ endif -%}
+    networks:
+      - traefik-net
+    deploy:
+      restart_policy:
+        delay: 10s
+        max_attempts: 10
+        window: 60s
+      labels:
+        - "traefik.port=9000"
+        - "traefik.frontend.rule=Host:object.bluehairfreak.com"
+        - "traefik.docker.network=traefik-net"
+        - "traefik.enable=true"
+    command: server /export
+    secrets:
+      - secret_key
+      - access_key
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+{% if env['PERSISTENCE_DRIVER']|length %}
+volumes:
+  {{env['DOCKER_SERVICE']}}-data:
+    {% if env['PERSISTENCE_DRIVER'] == "vxflex" -%}
+    driver: rexray/scaleio
+    driver_opts:
+      size: 50
+{% elif env['PERSISTENCE_DRIVER'] == "nfs" -%}
+    driver: local
+    driver_opts:
+      type: nfs
+      o: addr={{env['NFS_SERVER']}},rw,nolock,vers=4,hard
+      device: ":{{env['nfs_share']}}/{{env['DOCKER_STACK']}}"
+{% endif %}
+{%+ endif -%}
+
+networks:
+  traefik-net:
+    external: true
+
+secrets:
+  secret_key:
+    external: true
+  access_key:
+    external: true
+
